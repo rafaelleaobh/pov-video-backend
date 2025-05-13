@@ -8,9 +8,7 @@ services:
     startCommand: "gunicorn src.main:app"
     envVars:
       - key: PYTHON_VERSION
-        value: 3.13.0 # Certifique-se que esta versão é suportada ou ajuste
-      - key: PYTHONPATH # <--- ADICIONE ESTA LINHA
-        value: "."  
+        value: 3.11.0 # Certifique-se que esta versão é suportada ou ajuste
       - key: FLASK_APP
         value: src/main.py
       - key: FLASK_ENV

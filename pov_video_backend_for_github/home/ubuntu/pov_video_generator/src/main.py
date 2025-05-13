@@ -6,7 +6,7 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, BASE_DIR)
 
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+from flask_cors import CORS # Import CORS
 import threading
 import time
 import json
@@ -22,7 +22,14 @@ from src.integrations import (
 from src.credentials_manager import get_credentials, save_credentials
 
 app = Flask(__name__)
-CORS(app)  # Enable CORS for all routes
+
+# Configuração do CORS para permitir a origem específica do frontend
+# e as origens padrão para desenvolvimento local, se necessário.
+CORS(app, resources={r"/api/*": {"origins": [
+    "https://pov-video-frontend-j9gfo8oam-rafael-leaos-projects-e3cb079d.vercel.app",
+    "http://localhost:5173", 
+    "http://localhost:5174"
+]}})
 
 tasks = {}
 task_id_counter = 0
@@ -65,7 +72,7 @@ def run_pov_workflow(task_id, scene_description):
         tasks[task_id]["steps"].append({"name": "GPT-4 Prompt Generation", "status": "processing", "timestamp": time.time()})
         detailed_prompt = generate_prompt_with_gpt4(scene_description, openai_api_key)
         if isinstance(detailed_prompt, dict) and "error" in detailed_prompt:
-            raise Exception(f"GPT-4 Error: {detailed_prompt['error']}") # Corrigido
+            raise Exception(f"GPT-4 Error: {detailed_prompt['error']}")
         tasks[task_id]["steps"][-1]["status"] = "completed"
         tasks[task_id]["steps"][-1]["output"] = detailed_prompt
         tasks[task_id]["prompt"] = detailed_prompt
@@ -74,16 +81,19 @@ def run_pov_workflow(task_id, scene_description):
         tasks[task_id]["steps"].append({"name": "FLUX Image Generation", "status": "processing", "timestamp": time.time()})
         image_url = generate_image_with_flux(detailed_prompt, huggingface_api_key)
         if isinstance(image_url, dict) and "error" in image_url:
-            raise Exception(f"FLUX Image Generation Error: {image_url['error']}") # Corrigido
+            raise Exception(f"FLUX Image Generation Error: {image_url['error']}")
         tasks[task_id]["steps"][-1]["status"] = "completed"
         tasks[task_id]["steps"][-1]["output"] = image_url
         tasks[task_id]["image_url"] = image_url
 
         # 3. Create Video with RunwayML
         tasks[task_id]["steps"].append({"name": "RunwayML Video Generation", "status": "processing", "timestamp": time.time()})
-        runway_task_id = create_video_with_runway(image_url, detailed_prompt, runway_api_key)
-        if isinstance(runway_task_id, dict) and "error" in runway_task_id:
-            raise Exception(f"RunwayML Video Creation Error: {runway_task_id['error']}") # Corrigido
+        runway_task_id_obj = create_video_with_runway(image_url, detailed_prompt, runway_api_key)
+        if isinstance(runway_task_id_obj, dict) and "error" in runway_task_id_obj:
+            raise Exception(f"RunwayML Video Creation Error: {runway_task_id_obj['error']}")
+        runway_task_id = runway_task_id_obj.get("uuid") # Assuming the task ID is in 'uuid'
+        if not runway_task_id:
+             raise Exception(f"RunwayML Video Creation did not return a task ID. Response: {runway_task_id_obj}")
         tasks[task_id]["steps"][-1]["status"] = "submitted"
         tasks[task_id]["steps"][-1]["runway_task_id"] = runway_task_id
 
@@ -95,22 +105,24 @@ def run_pov_workflow(task_id, scene_description):
         while retry_count < max_retries:
             status_response = check_runway_video_status(runway_task_id, runway_api_key)
             if isinstance(status_response, dict) and "error" in status_response:
-                raise Exception(f"RunwayML Status Check Error: {status_response['error']}") # Corrigido
+                raise Exception(f"RunwayML Status Check Error: {status_response['error']}")
 
             if status_response.get("status") == "succeeded":
                 video_url = status_response.get("output", {}).get("video_url")
                 if not video_url:
-                    video_url = status_response.get("url")
+                    video_url = status_response.get("url") # Fallback, as seen in some RunwayML responses
                 if not video_url:
-                    video_url = status_response.get("output")
+                     # Try to get it from output if it's a direct string
+                    raw_output = status_response.get("output")
+                    if isinstance(raw_output, str) and raw_output.startswith("http"):
+                        video_url = raw_output
                 if video_url:
                     tasks[task_id]["steps"][-1]["status"] = "completed"
                     tasks[task_id]["steps"][-1]["output"] = video_url
                     break
             elif status_response.get("status") == "failed":
-                # Usando .get com fallback para evitar KeyError se 'error_message' não existir
-                error_message = status_response.get('error_message', 'Unknown error') 
-                raise Exception(f"RunwayML Video Generation Failed: {error_message}") # Corrigido (e mais seguro)
+                error_message = status_response.get('error_message', status_response.get('error', 'Unknown RunwayML error'))
+                raise Exception(f"RunwayML Video Generation Failed: {error_message}")
 
             time.sleep(10)
             retry_count += 1
@@ -128,7 +140,7 @@ def run_pov_workflow(task_id, scene_description):
             )
             if isinstance(sheet_response, dict) and "error" in sheet_response:
                 tasks[task_id]["steps"][-1]["status"] = "warning"
-                tasks[task_id]["steps"][-1]["message"] = f"Google Sheets Error: {sheet_response['error']}" # Corrigido
+                tasks[task_id]["steps"][-1]["message"] = f"Google Sheets Error: {sheet_response['error']}"
             else:
                 tasks[task_id]["steps"][-1]["status"] = "completed"
 
@@ -136,7 +148,7 @@ def run_pov_workflow(task_id, scene_description):
         if gmail_recipient and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
             tasks[task_id]["steps"].append({"name": "Gmail Notification", "status": "processing", "timestamp": time.time()})
             email_subject = f"POV Video Generated: {scene_description[:30]}..."
-            email_body = f"Your POV video for the scene \'{scene_description}\' has been generated.\n\nPrompt: {detailed_prompt}\nImage URL: {image_url}\nVideo URL: {video_url}"
+            email_body = f"Your POV video for the scene '{scene_description}' has been generated.\n\nPrompt: {detailed_prompt}\nImage URL: {image_url}\nVideo URL: {video_url}"
             email_response = send_email_with_gmail(
                 gmail_recipient,
                 email_subject,
@@ -144,7 +156,7 @@ def run_pov_workflow(task_id, scene_description):
             )
             if isinstance(email_response, dict) and "error" in email_response:
                 tasks[task_id]["steps"][-1]["status"] = "warning"
-                tasks[task_id]["steps"][-1]["message"] = f"Gmail Error: {email_response['error']}" # Corrigido
+                tasks[task_id]["steps"][-1]["message"] = f"Gmail Error: {email_response['error']}"
             else:
                 tasks[task_id]["steps"][-1]["status"] = "completed"
 
@@ -157,6 +169,9 @@ def run_pov_workflow(task_id, scene_description):
         tasks[task_id]["status"] = "error"
         tasks[task_id]["error"] = error_str
         if tasks[task_id]["steps"] and tasks[task_id]["steps"][-1]["status"] == "processing":
+            tasks[task_id]["steps"][-1]["status"] = "error"
+            tasks[task_id]["steps"][-1]["message"] = error_str
+        elif tasks[task_id]["steps"] and tasks[task_id]["steps"][-1]["status"] == "polling": # Handle error during polling
             tasks[task_id]["steps"][-1]["status"] = "error"
             tasks[task_id]["steps"][-1]["message"] = error_str
         else:
@@ -173,7 +188,7 @@ def generate_pov_endpoint():
 
     task_id = task_id_counter
     task_id_counter += 1
-    tasks[task_id] = {"status": "pending", "description": scene_description, "result": None, "error": None, "steps": []}
+    tasks[task_id] = {"id": task_id, "status": "pending", "description": scene_description, "result": None, "error": None, "steps": []}
 
     thread = threading.Thread(target=run_pov_workflow, args=(task_id, scene_description))
     thread.start()
@@ -192,5 +207,8 @@ def get_all_tasks():
     return jsonify(tasks)
 
 if __name__ == "__main__":
-    app.run(debug=True, host="0.0.0.0", port=int(os.environ.get("PORT", 5001)))
+    # For Render, PORT environment variable is used. For local, defaults to 5001.
+    port = int(os.environ.get("PORT", 5001))
+    # Listen on 0.0.0.0 to be accessible externally
+    app.run(debug=False, host="0.0.0.0", port=port) # Set debug=False for production
 
