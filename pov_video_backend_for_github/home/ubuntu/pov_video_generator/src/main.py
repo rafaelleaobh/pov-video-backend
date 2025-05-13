@@ -35,7 +35,6 @@ def health_check():
 def manage_credentials():
     if request.method == "GET":
         creds = get_credentials()
-        # Check if the Google Application Credentials path is set via environment variable
         creds["google_application_credentials_set"] = bool(os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"))
         return jsonify(creds)
     elif request.method == "POST":
@@ -55,8 +54,6 @@ def run_pov_workflow(task_id, scene_description):
         google_spreadsheet_id = credentials.get("google_spreadsheet_id")
         gmail_recipient = credentials.get("gmail_recipient")
 
-        # The GOOGLE_APPLICATION_CREDENTIALS path is now read directly by integration functions
-
         if not all([openai_api_key, runway_api_key]):
             error_msg = "Missing API credentials for OpenAI or RunwayML."
             tasks[task_id]["status"] = "error"
@@ -68,7 +65,7 @@ def run_pov_workflow(task_id, scene_description):
         tasks[task_id]["steps"].append({"name": "GPT-4 Prompt Generation", "status": "processing", "timestamp": time.time()})
         detailed_prompt = generate_prompt_with_gpt4(scene_description, openai_api_key)
         if isinstance(detailed_prompt, dict) and "error" in detailed_prompt:
-            raise Exception(f"GPT-4 Error: {detailed_prompt['error']}")
+            raise Exception(f"GPT-4 Error: {detailed_prompt['error']}") # Corrigido
         tasks[task_id]["steps"][-1]["status"] = "completed"
         tasks[task_id]["steps"][-1]["output"] = detailed_prompt
         tasks[task_id]["prompt"] = detailed_prompt
@@ -77,7 +74,7 @@ def run_pov_workflow(task_id, scene_description):
         tasks[task_id]["steps"].append({"name": "FLUX Image Generation", "status": "processing", "timestamp": time.time()})
         image_url = generate_image_with_flux(detailed_prompt, huggingface_api_key)
         if isinstance(image_url, dict) and "error" in image_url:
-            raise Exception(f"FLUX Image Generation Error: {image_url["error"]}")
+            raise Exception(f"FLUX Image Generation Error: {image_url['error']}") # Corrigido
         tasks[task_id]["steps"][-1]["status"] = "completed"
         tasks[task_id]["steps"][-1]["output"] = image_url
         tasks[task_id]["image_url"] = image_url
@@ -86,7 +83,7 @@ def run_pov_workflow(task_id, scene_description):
         tasks[task_id]["steps"].append({"name": "RunwayML Video Generation", "status": "processing", "timestamp": time.time()})
         runway_task_id = create_video_with_runway(image_url, detailed_prompt, runway_api_key)
         if isinstance(runway_task_id, dict) and "error" in runway_task_id:
-            raise Exception(f"RunwayML Video Creation Error: {runway_task_id["error"]}")
+            raise Exception(f"RunwayML Video Creation Error: {runway_task_id['error']}") # Corrigido
         tasks[task_id]["steps"][-1]["status"] = "submitted"
         tasks[task_id]["steps"][-1]["runway_task_id"] = runway_task_id
 
@@ -98,7 +95,7 @@ def run_pov_workflow(task_id, scene_description):
         while retry_count < max_retries:
             status_response = check_runway_video_status(runway_task_id, runway_api_key)
             if isinstance(status_response, dict) and "error" in status_response:
-                raise Exception(f"RunwayML Status Check Error: {status_response["error"]}")
+                raise Exception(f"RunwayML Status Check Error: {status_response['error']}") # Corrigido
 
             if status_response.get("status") == "succeeded":
                 video_url = status_response.get("output", {}).get("video_url")
@@ -111,7 +108,9 @@ def run_pov_workflow(task_id, scene_description):
                     tasks[task_id]["steps"][-1]["output"] = video_url
                     break
             elif status_response.get("status") == "failed":
-                raise Exception(f"RunwayML Video Generation Failed: {status_response.get("error_message", "Unknown error")}")
+                # Usando .get com fallback para evitar KeyError se 'error_message' não existir
+                error_message = status_response.get('error_message', 'Unknown error') 
+                raise Exception(f"RunwayML Video Generation Failed: {error_message}") # Corrigido (e mais seguro)
 
             time.sleep(10)
             retry_count += 1
@@ -120,7 +119,6 @@ def run_pov_workflow(task_id, scene_description):
         tasks[task_id]["video_url"] = video_url
 
         # 5. Add to Google Sheets
-        # GOOGLE_APPLICATION_CREDENTIALS env var is used by add_to_google_sheet directly
         if google_spreadsheet_id and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
             tasks[task_id]["steps"].append({"name": "Google Sheets Update", "status": "processing", "timestamp": time.time()})
             sheet_response = add_to_google_sheet(
@@ -130,12 +128,11 @@ def run_pov_workflow(task_id, scene_description):
             )
             if isinstance(sheet_response, dict) and "error" in sheet_response:
                 tasks[task_id]["steps"][-1]["status"] = "warning"
-                tasks[task_id]["steps"][-1]["message"] = f"Google Sheets Error: {sheet_response["error"]}"
+                tasks[task_id]["steps"][-1]["message"] = f"Google Sheets Error: {sheet_response['error']}" # Corrigido
             else:
                 tasks[task_id]["steps"][-1]["status"] = "completed"
 
         # 6. Send Email with Gmail
-        # GOOGLE_APPLICATION_CREDENTIALS env var is used by send_email_with_gmail directly
         if gmail_recipient and os.environ.get("GOOGLE_APPLICATION_CREDENTIALS"):
             tasks[task_id]["steps"].append({"name": "Gmail Notification", "status": "processing", "timestamp": time.time()})
             email_subject = f"POV Video Generated: {scene_description[:30]}..."
@@ -147,7 +144,7 @@ def run_pov_workflow(task_id, scene_description):
             )
             if isinstance(email_response, dict) and "error" in email_response:
                 tasks[task_id]["steps"][-1]["status"] = "warning"
-                tasks[task_id]["steps"][-1]["message"] = f"Gmail Error: {email_response["error"]}"
+                tasks[task_id]["steps"][-1]["message"] = f"Gmail Error: {email_response['error']}" # Corrigido
             else:
                 tasks[task_id]["steps"][-1]["status"] = "completed"
 
