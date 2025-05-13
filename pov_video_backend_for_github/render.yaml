@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: pov-video-backend
+    env: python
+    region: oregon # Ou outra região de sua preferência
+    plan: free # Especifica o plano gratuito
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "gunicorn src.main:app"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0 # Certifique-se que esta versão é suportada ou ajuste
+      - key: FLASK_APP
+        value: src/main.py
+      - key: FLASK_ENV
+        value: production
+      # Adicione outras variáveis de ambiente necessárias aqui (ex: chaves de API)
+      # - key: OPENAI_API_KEY
+      #   sync: false # Para evitar que o valor seja exposto no render.yaml se for sensitivo
+      # - key: HUGGINGFACE_API_KEY
+      #   sync: false
+      # - key: RUNWAYML_API_KEY
+      #   sync: false
+      # - key: GOOGLE_CREDENTIALS_JSON_PATH
+      #   sync: false
+      # - key: GOOGLE_SPREADSHEET_ID
+      #   sync: false
+      # - key: GMAIL_RECIPIENT
+      #   sync: false
+
