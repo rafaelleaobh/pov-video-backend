@@ -49,44 +49,46 @@ def create_video_with_runway(image_url_param, prompt, api_key):
     """Initiates video generation with RunwayML using an image and returns a task ID."""
     headers = {
         "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "X-Runway-Version": "2024-11-06"  # Added required version header
     }
-    # Corrected parameter name from image_prompt to image_url
+    # Corrected parameter names according to RunwayML documentation
     data = {
-        "image_url": image_url_param, # Changed from image_prompt
-        "text_prompt": prompt,
-        # Add other parameters if needed by RunwayML Gen-2, e.g., motion, seed
+        "promptImage": image_url_param, # Changed from image_url to promptImage
+        "promptText": prompt,          # Changed from text_prompt to promptText
+        # Add other parameters if needed by RunwayML Gen-2/Gen-3, e.g., motion, seed, model
+        # "model": "gen_4_turbo" # Example if a specific model needs to be specified
     }
     try:
-        response = requests.post("https://api.runwayml.com/v1/tasks", headers=headers, json=data, timeout=30)
+        # Corrected endpoint according to RunwayML documentation
+        response = requests.post("https://api.runwayml.com/v1/image_to_video", headers=headers, json=data, timeout=60) # Increased timeout
         response.raise_for_status() # Raises an HTTPError for bad responses (4XX or 5XX)
-        # Assuming the task ID is directly in 'uuid' or similar based on typical API responses
-        # If the structure is different, this needs adjustment.
         response_data = response.json()
-        task_id = response_data.get("uuid") or response_data.get("task_id") # Common keys for task ID
+        # The task ID is typically returned as 'id' in the response for image_to_video endpoint
+        task_id = response_data.get("id") or response_data.get("uuid") # 'id' is more common for this endpoint
         if not task_id:
-            # Log the full response if task_id is not found as expected
             return {"error": f"RunwayML API did not return a task ID. Full response: {json.dumps(response_data)}"}
-        return {"uuid": task_id} # Return as a dict to match expected structure in main.py
+        return {"id": task_id} # Return as a dict to match expected structure in main.py, using 'id'
     except requests.exceptions.HTTPError as http_err:
         error_details = "No additional details in response."
         try:
-            error_details = http_err.response.json() # Try to parse JSON error response
+            error_details = http_err.response.json()
         except json.JSONDecodeError:
-            error_details = http_err.response.text # Fallback to text if not JSON
+            error_details = http_err.response.text
         return {"error": f"RunwayML API request failed with HTTPError: {str(http_err)} - Details: {json.dumps(error_details) if isinstance(error_details, dict) else error_details}"}
     except requests.exceptions.RequestException as e:
         return {"error": f"RunwayML API request failed: {str(e)}"}
     except KeyError as e:
-        # This might happen if response.json() doesn't have expected keys even on success (less likely for task creation)
         return {"error": f"Failed to parse RunwayML API response for task creation: {str(e)} - Response: {response.text}"}
 
 def check_runway_video_status(task_id, api_key):
     """Checks the status of a video generation task on RunwayML."""
     headers = {
-        "Authorization": f"Bearer {api_key}"
+        "Authorization": f"Bearer {api_key}",
+        "X-Runway-Version": "2024-11-06"  # Added required version header
     }
     try:
+        # Endpoint for checking task status remains /v1/tasks/{id}
         response = requests.get(f"https://api.runwayml.com/v1/tasks/{task_id}", headers=headers, timeout=30)
         response.raise_for_status()
         return response.json()
