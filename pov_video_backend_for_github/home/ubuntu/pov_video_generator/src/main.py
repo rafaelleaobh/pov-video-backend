@@ -68,7 +68,7 @@ def run_pov_workflow(task_id, scene_description):
         tasks[task_id]["steps"].append({"name": "GPT-4 Prompt Generation", "status": "processing", "timestamp": time.time()})
         detailed_prompt = generate_prompt_with_gpt4(scene_description, openai_api_key)
         if isinstance(detailed_prompt, dict) and "error" in detailed_prompt:
-            raise Exception(f"GPT-4 Error: {detailed_prompt["error"]}")
+            raise Exception(f"GPT-4 Error: {detailed_prompt['error']}")
         tasks[task_id]["steps"][-1]["status"] = "completed"
         tasks[task_id]["steps"][-1]["output"] = detailed_prompt
         tasks[task_id]["prompt"] = detailed_prompt
