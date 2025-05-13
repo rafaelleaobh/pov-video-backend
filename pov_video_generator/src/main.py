@@ -27,7 +27,7 @@ app = Flask(__name__)
 # e as origens padrão para desenvolvimento local, se necessário.
 # Esta configuração DEVE estar ativa no Render para resolver os erros de CORS.
 CORS(app, resources={r"/api/*": {"origins": [
-    "https://pov-video-frontend-j9gfo8oam-rafael-leaos-projects-e3cb079d.vercel.app",
+    "https://pov-video-frontend.vercel.app",
     "http://localhost:5173", 
     "http://localhost:5174"
 ]}})
